@@ -62,8 +62,8 @@ export async function applyProfile(ctx: vscode.ExtensionContext) {
   }
 
   // Saving extensions for the workspace
-  await setWorkspaceStorageValue("enabled", enabledList);
-  await setWorkspaceStorageValue("disabled", disabledList);
+  await setWorkspaceStorageValue(ctx, "enabled", enabledList);
+  await setWorkspaceStorageValue(ctx, "disabled", disabledList);
 
   // Set the current profile name
   await ctx.workspaceState.update("profile", profileName);

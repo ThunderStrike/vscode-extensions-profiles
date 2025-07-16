@@ -2,7 +2,7 @@ import { homedir } from "os";
 import { promisify } from "util";
 import * as vscode from "vscode";
 import { GLOBAL_PROFILE_NAME, PLATFORM_SLASH } from "./constans";
-import { getGlobalStateValue, getGlobalStorageValue, setGlobalStateValue } from "./storage";
+import { getGlobalStateValue, setGlobalStateValue } from "./storage";
 import { ExtensionList, ExtensionValue, PackageJson, ProfileList } from "./types";
 
 import path = require("path");
@@ -208,13 +208,6 @@ function sortObjectByKey(obj: any) {
 
 export async function getProfiles(ctx: vscode.ExtensionContext) {
   let data = await getGlobalStateValue(ctx, "profiles");
-
-  // copy old state
-  if (Object.keys(data).length === 0) {
-    data = await getGlobalStorageValue("vscodeExtensionProfiles/profiles");
-    await setGlobalStateValue(ctx, "profiles", data);
-  }
-
   return sortObjectByKey(data) as ProfileList;
 }
 
