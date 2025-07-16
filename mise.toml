@@ -1,0 +1,13 @@
+
+
+[tools]
+node = "latest"
+
+
+[tasks.install_vscode_test_deps]
+quiet = true
+run = "echo 'Install VSCode test dependencies' && sudo apt-get install libnss3 libasound2t64 -y"
+
+[tasks.uninstall_vscode_test_deps]
+quiet = true
+run = "echo 'Uninstalling VSCode test dependencies and cleaning up' && sudo apt-get remove libnss3 libasound2t64 -y && sudo apt-get autoremove -y"

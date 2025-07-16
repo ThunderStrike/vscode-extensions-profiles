@@ -16,3 +16,6 @@ out/
 .vscode-test/
 .DS_Store
 *.vsix
+
+# Mise
+.vscode/mise-tools
