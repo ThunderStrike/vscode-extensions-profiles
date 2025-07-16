@@ -1,162 +1,79 @@
 import * as vscode from "vscode";
-import { GLOBAL_PROFILE_NAME } from "./constans";
-import { getGlobalStateValue, setGlobalStateValue } from "./storage";
-import type { ExtensionList, ExtensionValue, ProfileList } from "./types";
 
-import path = require("path");
+// Get current profile name from VSCode settings
+// export function getCurrentProfileName(): string | undefined {
+//   const config = vscode.workspace.getConfiguration();
+//   // VSCode stores current profile info in workspace/global settings
+//   // Need to check how VSCode exposes this
+//   return config.get('workbench.profiles.current');
+// }
 
-// ✅ Keep - Still needed for VS Code config path
-export function getVSCodeConfigPath(): string {
-  return path.dirname(vscode.env.appRoot);
+async function getCurrentProfileFromStorage() {
+    try {
+        // Construct path to global storage
+        const globalStorageUri = vscode.Uri.joinPath(
+            vscode.Uri.file(vscode.env.appRoot),
+            '..', 'User', 'globalStorage', 'storage.json'
+        );
+        
+        // Read the storage file
+        const storageContent = await vscode.workspace.fs.readFile(globalStorageUri);
+        console.log({
+          storageContent
+        })
+
+        const storageData = JSON.parse(Buffer.from(storageContent).toString('utf8'));
+        
+        // Parse profile information
+        // The exact structure may vary, but profile info is typically stored here
+        console.log('Global storage:', storageData);
+        
+        return storageData;
+        
+    } catch (error) {
+        console.error('Error reading global storage:', error);
+        return null;
+    }
 }
 
-// ✅ Keep - VS Code extension API
-export function getInstalledExtensions(): readonly vscode.Extension<any>[] {
-  return vscode.extensions.all.filter(
-    (ext) => !ext.packageJSON.isBuiltin && !ext.extensionPath.includes("/extensions/ms-vscode.")
-  );
+
+// Get current profile name (platform-specific detection)
+export async function getCurrentProfileName(): Promise<string | undefined> {
+  // VSCode doesn't directly expose current profile name
+  // We need to infer it from workspace/global settings
+
+  return await getCurrentProfileFromStorage();
+  
+  // try {
+  //   const config = vscode.workspace.getConfiguration();
+  //   console.log('Current configuration:', config);
+    
+  //   // Check if we're in a profile-specific workspace
+  //   const workspaceFile = vscode.workspace.workspaceFile;
+  //   if (workspaceFile) {
+  //     // Extract profile from workspace path if it's profile-specific
+  //     const pathParts = workspaceFile.fsPath.split(/[/\\]/);
+  //     const profileIndex = pathParts.findIndex(part => part === 'profiles');
+  //     if (profileIndex >= 0 && profileIndex < pathParts.length - 1) {
+  //       return pathParts[profileIndex + 1];
+  //     }
+  //   }
+    
+  //   // Fallback: check environment or other indicators
+  //   return undefined;
+  // } catch (error) {
+  //   console.warn('Could not determine current profile:', error);
+  //   return undefined;
+  // }
 }
 
-// ✅ Keep - VS Code storage APIs
-export function getWorkspaceStoragePath(ctx: vscode.ExtensionContext): string {
-  return ctx.storageUri?.fsPath || "";
-}
-
-export function getGlobalStoragePath(ctx: vscode.ExtensionContext): string {
-  return ctx.globalStorageUri.fsPath;
-}
-
-// ✅ Keep - Workspace identification
-export function getWorkspaceIdentifier(): string {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders) { return ""; }
-
-  if (workspaceFolders.length === 1) {
-    return Buffer.from(workspaceFolders[0].uri.toString()).toString("base64");
+export async function updateProfileStatus(statusBar: vscode.StatusBarItem) {
+  // Try to detect current profile name
+  const currentProfile = await getCurrentProfileName();
+  
+  if (currentProfile) {
+    statusBar.text = `$(account) ${currentProfile}`;
   } else {
-    // Multi-root workspace
-    const combined = workspaceFolders.map((f) => f.uri.toString()).join("|");
-    return Buffer.from(combined).toString("base64");
-  }
-}
-
-// ✅ Keep - Helper functions for VS Code file system
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readJsonFile(filePath: string): Promise<any> {
-  try {
-    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-    return JSON.parse(new TextDecoder().decode(content));
-  } catch (error) {
-    throw new Error(`Failed to read JSON file ${filePath}: ${error}`);
-  }
-}
-
-// ✅ Keep - Used for object sorting
-function sortObjectByKey(obj: any) {
-  return Object.keys(obj)
-    .sort()
-    .reduce((result: any, key) => {
-      result[key] = obj[key];
-      return result;
-    }, {});
-}
-
-// ✅ Keep - Core profile management functions
-export async function getProfiles(ctx: vscode.ExtensionContext): Promise<ProfileList> {
-  let data = await getGlobalStateValue(ctx, "profiles") as ProfileList;
-
-  // Initialize global profile if it doesn't exist
-  if (!data[GLOBAL_PROFILE_NAME]) {
-    data[GLOBAL_PROFILE_NAME] = {};
-    await setGlobalStateValue(ctx, "profiles", data);
-  }
-
-  return sortObjectByKey(data) as ProfileList;
-}
-
-export async function getExtensions(ctx: vscode.ExtensionContext) {
-  return (await getGlobalStateValue(ctx, "extensions")) as ExtensionList;
-}
-
-// ✅ Keep - Core extension discovery using VS Code APIs
-export async function getAllExtensions(): Promise<ExtensionValue[]> {
-  const extensions: ExtensionValue[] = [];
-
-  const allExtensions = vscode.extensions.all.filter(
-    (ext) => !ext.packageJSON.isBuiltin && !ext.extensionPath.includes("/extensions/ms-vscode.")
-  );
-
-  for (const ext of allExtensions) {
-    const packageJson = ext.packageJSON;
-
-    let extInfo: ExtensionValue = {
-      id: ext.id,
-      uuid: packageJson.__metadata?.id,
-      label: packageJson.displayName || packageJson.name,
-      description: packageJson.description,
-    };
-
-    // Handle localized labels if needed
-    if (extInfo.label && /^%.*%$/gim.test(extInfo.label)) {
-      extInfo.label = await getExtensionLocaleValue(ext.extensionPath, extInfo.label);
-    }
-
-    if (extInfo.description && /^%.*%$/gim.test(extInfo.description)) {
-      extInfo.description = await getExtensionLocaleValue(ext.extensionPath, extInfo.description);
-    }
-
-    extensions.push(extInfo);
-  }
-
-  return extensions.sort((a, b) => a.label!.localeCompare(b.label!));
-}
-
-// ✅ Keep - Localization support
-// ✅ Modernized - Use VS Code URI APIs for extension localization
-export async function getExtensionLocaleValue(extPath: string, key: string): Promise<string> {
-  const cleanKey = key.replace(/%/g, "");
-  const language = vscode.env.language;
-
-  try {
-    const extensionUri = vscode.Uri.file(extPath);
-
-    // Try language-specific file first
-    const languageFile = vscode.Uri.joinPath(extensionUri, `package.nls.${language}.json`);
-    if (await fileExists(languageFile.fsPath)) {
-      try {
-        const localeData = await readJsonFile(languageFile.fsPath);
-        if (localeData[cleanKey]) {
-          return localeData[cleanKey];
-        }
-      } catch (e) {
-        console.warn(`Error reading language file "${languageFile.fsPath}": ${e}`);
-      }
-    }
-
-    // Fallback to default localization file
-    const defaultFile = vscode.Uri.joinPath(extensionUri, "package.nls.json");
-    if (await fileExists(defaultFile.fsPath)) {
-      try {
-        const defaultData = await readJsonFile(defaultFile.fsPath);
-        if (defaultData[cleanKey]) {
-          return defaultData[cleanKey];
-        }
-      } catch (e) {
-        console.warn(`Error reading default locale file "${defaultFile.fsPath}": ${e}`);
-      }
-    }
-
-    return key;
-  } catch (e) {
-    console.warn(`Error processing locale value for key "${key}": ${e}`);
-    return key;
+    statusBar.text = "$(account) Default";
   }
 }

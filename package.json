@@ -1,31 +1,35 @@
 {
-  "name": "vscode-extension-profiles",
-  "displayName": "Extension profiles",
-  "version": "1.2.4",
+  "name": "vscode-profiles-plus",
+  "displayName": "Profiles Plus",
+  "description": "Advanced operations for VSCode profiles - merge, compare, analyze",
+  "version": "2.0.0",
   "private": false,
-  "description": "Lets you create profiles to include the selected extensions in the desired project.",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
   "categories": [
     "Other"
   ],
   "keywords": [
-    "vscode-settings",
     "profile",
+    "profiles",
     "extensions",
-    "extension",
+    "workspace",
     "manager",
-    "workspace"
+    "merge",
+    "compare"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/evald24/vscode-extension-profiles"
+    "url": "https://github.com/ThunderStrike/vscode-extensions-profiles.git"
   },
   "icon": "assets/icon.png",
   "license": "Apache-2.0",
   "author": {
-    "name": "Evald Smalyakov",
-    "url": "https://github.com/evald24"
+    "name": "ThunderStrike",
+    "url": "https://github.com/ThunderStrike"
   },
-  "publisher": "evald24",
+  "publisher": "ThunderStrike",
   "main": "./out/src/extension.js",
   "scripts": {
     "version": "auto-changelog -p && git add CHANGELOG.md",
@@ -39,57 +43,62 @@
   "contributes": {
     "commands": [
       {
-        "command": "vscode-extension-profiles.Apply",
-        "title": "Extension profiles: Select and apply profile",
-        "shortTitle": "Select and apply profile"
+        "command": "profiles-plus.create",
+        "title": "Create Profile",
+        "category": "Profiles Plus"
       },
       {
-        "command": "vscode-extension-profiles.Create",
-        "title": "Extension profiles: Create profile",
-        "shortTitle": "Create profile"
+        "command": "profiles-plus.switch",
+        "title": "Switch Profile",
+        "category": "Profiles Plus"
       },
       {
-        "command": "vscode-extension-profiles.Clone",
-        "title": "Extension profiles: Clone profile",
-        "shortTitle": "Clone profile"
+        "command": "profiles-plus.export",
+        "title": "Export Profile",
+        "category": "Profiles Plus"
       },
       {
-        "command": "vscode-extension-profiles.Edit",
-        "title": "Extension profiles: Edit profile",
-        "shortTitle": "Edit profile"
+        "command": "profiles-plus.import",
+        "title": "Import Profile",
+        "category": "Profiles Plus"
       },
       {
-        "command": "vscode-extension-profiles.Refresh",
-        "title": "Extension profiles: Clear cache and refresh the list of installed extensions",
-        "shortTitle": "Clear cache and refresh the list of installed extensions"
+        "command": "profiles-plus.merge",
+        "title": "Merge Profiles",
+        "category": "Profiles Plus",
+        "icon": "$(git-merge)"
       },
       {
-        "command": "vscode-extension-profiles.Delete",
-        "title": "Extension profiles: Delete profile",
-        "shortTitle": "Delete profile"
+        "command": "profiles-plus.compare",
+        "title": "Compare Profiles",
+        "category": "Profiles Plus",
+        "icon": "$(diff)"
       },
       {
-        "command": "vscode-extension-profiles.Export",
-        "title": "Extension profiles: Export profile",
-        "shortTitle": "Export profile"
-      },
-      {
-        "command": "vscode-extension-profiles.Import",
-        "title": "Extension profiles: Import profile",
-        "shortTitle": "Import profile"
+        "command": "profiles-plus.analyze",
+        "title": "Analyze Current Profile",
+        "category": "Profiles Plus",
+        "icon": "$(graph)"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "profiles-plus.merge",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "profiles-plus.compare",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "profiles-plus.analyze"
+        }
+      ]
+    }
   },
   "activationEvents": [
-    "onCommand:vscode-extension-profiles.Apply",
-    "onCommand:vscode-extension-profiles.Create",
-    "onCommand:vscode-extension-profiles.Clone",
-    "onCommand:vscode-extension-profiles.Edit",
-    "onCommand:vscode-extension-profiles.Delete",
-    "onCommand:vscode-extension-profiles.Refresh",
-    "onCommand:vscode-extension-profiles.Export",
-    "onCommand:vscode-extension-profiles.Import",
-    "onStartupFinished"
+    "*"
   ],
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -98,15 +107,11 @@
     "@typescript-eslint/eslint-plugin": "^8.37.0",
     "@typescript-eslint/parser": "^8.37.0",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
     "auto-changelog": "^2.5.0",
     "eslint": "^9.31.0",
     "mocha": "^11.7.1",
     "prettier": "^3.6.2",
     "typescript": "^5.8.3"
-  },
-  "engines": {
-    "vscode": "^1.57.0"
   },
   "preview": false
 }

@@ -1,25 +1,43 @@
-"use strict";
 import * as vscode from "vscode";
-import { applyProfile, cloneProfile, createProfile, deleteProfile, editProfile, exportProfile, importProfile, refreshExtensionList } from "./commands";
-import { createStatusBarItem } from "./status-bar";
-import type { CommandType } from "./types";
+import {
+  createNativeProfile,
+  switchNativeProfile,
+  exportNativeProfile,
+  importNativeProfile,
+  mergeProfiles,
+  compareProfiles,
+  analyzeCurrentProfile
+} from "./commands";
+import { createProfileStatusBar } from "./status-bar";
 
-export async function activate(ctx: vscode.ExtensionContext) {
-  // Refreshing the list of extensions after startup
-  refreshExtensionList(ctx, { isCache: true });
+/**
+ * Ultra-lean extension that enhances VSCode's native profiles
+ * Focuses only on advanced operations VSCode doesn't provide
+ */
 
-  // Registration commands
-  ctx.subscriptions.push(
-    vscode.commands.registerCommand("vscode-extension-profiles.Refresh" as CommandType, () => refreshExtensionList(ctx, {})),
-    vscode.commands.registerCommand("vscode-extension-profiles.Create" as CommandType, () => createProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Clone" as CommandType, () => cloneProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Apply" as CommandType, () => applyProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Edit" as CommandType, () => editProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Delete" as CommandType, () => deleteProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Export" as CommandType, () => exportProfile(ctx)),
-    vscode.commands.registerCommand("vscode-extension-profiles.Import" as CommandType, () => importProfile(ctx)),
-    createStatusBarItem("vscode-extension-profiles.Apply", ctx)
+export function activate(context: vscode.ExtensionContext) {
+  console.log('Profiles Plus extension is now active!');
+  
+  // Native profile operations (delegate to VSCode)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('profiles-plus.create', createNativeProfile),
+    vscode.commands.registerCommand('profiles-plus.switch', switchNativeProfile),
+    vscode.commands.registerCommand('profiles-plus.export', exportNativeProfile),
+    vscode.commands.registerCommand('profiles-plus.import', importNativeProfile)
   );
+
+  // Advanced operations (our value-add)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('profiles-plus.merge', mergeProfiles),
+    vscode.commands.registerCommand('profiles-plus.compare', compareProfiles),
+    vscode.commands.registerCommand('profiles-plus.analyze', analyzeCurrentProfile)
+  );
+
+  // Status bar for current profile
+  createProfileStatusBar(context);
 }
 
-export function deactivate() {}
+
+export function deactivate() {
+  // Clean shutdown
+}
