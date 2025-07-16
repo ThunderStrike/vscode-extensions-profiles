@@ -26,7 +26,7 @@
     "url": "https://github.com/evald24"
   },
   "publisher": "evald24",
-  "main": "./out/extension.js",
+  "main": "./out/src/extension.js",
   "scripts": {
     "version": "auto-changelog -p && git add CHANGELOG.md",
     "vscode:prepublish": "npm run prepackage && npm run compile",
