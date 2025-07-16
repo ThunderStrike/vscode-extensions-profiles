@@ -7,12 +7,13 @@
     "outDir": "out",
     "noImplicitAny": true,
     "noImplicitReturns": true,
-    "lib": ["es6"],
+    "lib": ["es2022"],
+    "esModuleInterop": true,
     "sourceMap": true,
     "strictNullChecks": true,
     "rootDir": ".",
     "noUnusedLocals": true /* Report errors on unused locals. */,
-    "typeRoots": ["src/types"]
+    "typeRoots": ["./node_modules/@types", "src/types"]
   },
   "include": ["src", "test"],
   "exclude": ["node_modules", ".vscode-test"]
