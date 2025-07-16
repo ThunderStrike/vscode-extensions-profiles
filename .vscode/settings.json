@@ -10,5 +10,6 @@
     "typescript.tsc.autoDetect": "off",
     "debug.javascript.defaultRuntimeExecutable": {
         "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
-    }
+    },
+    "mise.configureExtensionsUseSymLinks": true,
 }
