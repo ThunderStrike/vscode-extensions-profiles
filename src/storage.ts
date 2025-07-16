@@ -24,7 +24,6 @@ export function getEnabledExtensions() {
     .filter((e) => !/.*(?:\\\\|\/)resources(?:\\\\|\/)app(?:\\\\|\/)extensions(?:\\\\|\/).*/i.test(e.extensionPath)); // ignore internal extensions
 }
 
-
 export async function setGlobalStateValue(ctx: vscode.ExtensionContext, key: StorageKeyID, value: ExtensionList | ProfileList) {
   return await ctx.globalState.update(key, value);
 }
