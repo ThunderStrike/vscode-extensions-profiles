@@ -10,10 +10,10 @@
     "lib": ["es6"],
     "sourceMap": true,
     "strictNullChecks": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "noUnusedLocals": true /* Report errors on unused locals. */,
     "typeRoots": ["src/types"]
   },
-  "include": ["src"],
-  "exclude": ["test", "node_modules", ".vscode-test"]
+  "include": ["src", "test"],
+  "exclude": ["node_modules", ".vscode-test"]
 }
