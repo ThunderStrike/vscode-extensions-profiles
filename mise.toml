@@ -4,7 +4,7 @@ node = "latest"
 # VSCode Extension Development Tasks
 [tasks.version]
 description = "Generate changelog and stage it for commit"
-run = "auto-changelog -p && git add CHANGELOG.md"
+run = "npx auto-changelog -p && git add CHANGELOG.md"
 
 [tasks.prepackage]
 description = "Placeholder for prepackage task"
@@ -16,15 +16,15 @@ run = "mise run prepackage && mise run compile"
 
 [tasks.compile]
 description = "Compile TypeScript files"
-run = "rm -rf ./out && tsc -p ./"
+run = "rm -rf ./out && npx tsc -p ./"
 
 [tasks.lint]
 description = "Lint TypeScript source files"
-run = "eslint src --ext ts"
+run = "npx eslint src --ext ts"
 
 [tasks.watch]
 description = "Watch and compile TypeScript files"
-run = "tsc -watch -p ./"
+run = "npx tsc -watch -p ./"
 
 [tasks.pretest]
 description = "Prepare for testing by compiling and linting"
@@ -32,7 +32,7 @@ run = "mise run compile && mise run lint"
 
 [tasks.test]
 description = "Run VSCode extension tests"
-run = "vscode-test"
+run = "npx vscode-test"
 
 # Lifecycle Hook Tasks (Auto-handle pre/post behaviors)
 [tasks.test_with_hooks]
