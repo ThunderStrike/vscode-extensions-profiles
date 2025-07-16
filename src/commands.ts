@@ -1,10 +1,9 @@
-import { readFile, writeFile } from "fs/promises";
 import * as vscode from "vscode";
 import { GLOBAL_PROFILE_NAME } from "./constans";
 import { getStatusBar } from "./status-bar";
 import { setGlobalStateValue, setWorkspaceStorageValue } from "./storage";
-import { ExtensionList, ExtensionValue, ProfileList } from "./types";
-import { getAllExtensions, getExtensions, getPathToDocuments, getProfiles } from "./utils";
+import type { ExtensionList, ExtensionValue, ProfileList } from "./types";
+import { getAllExtensions, getExtensions, getProfiles } from "./utils";
 
 // Select and apply profile ...
 export async function applyProfile(ctx: vscode.ExtensionContext) {
@@ -367,21 +366,30 @@ export async function exportProfile(ctx: vscode.ExtensionContext) {
     return;
   }
 
+  // ✅ NEW - Use VS Code's default behavior for save location
   const resource = await vscode.window.showSaveDialog({
     title: "Select a place and file name to save the exported profile",
     saveLabel: "Export",
-    defaultUri: getPathToDocuments(profileName), // Desided to export all extentions to a default 'Documents' folder
+    defaultUri: vscode.Uri.file(`${profileName}.json`), // Simple filename suggestion
+    filters: {
+      "JSON files": ["json"],
+    },
   });
+
   if (!resource) {
     return vscode.window.showErrorMessage(`Couldn't locate the path to exported profile! Try again`);
   }
-  await writeFile(resource.fsPath, JSON.stringify(profiles[profileName], null, "    "));
+
+  const profileData = JSON.stringify(profiles[profileName], null, "    ");
+  const encoded = new TextEncoder().encode(profileData);
+  await vscode.workspace.fs.writeFile(resource, encoded);
+
   return vscode.window.showInformationMessage(`Profile "${profileName}" successfully exported!`);
 }
 
 // Import a profile...
 export async function importProfile(ctx: vscode.ExtensionContext) {
-  // Use showSaveDialog to get a path to the profile
+  // ✅ NEW - Use VS Code's default behavior for open location
   const resource = await vscode.window.showOpenDialog({
     title: "Select a profile to import",
     openLabel: "Import",
@@ -389,13 +397,19 @@ export async function importProfile(ctx: vscode.ExtensionContext) {
     filters: {
       "JSON files": ["json"],
     },
-    defaultUri: getPathToDocuments(),
+    // Remove defaultUri to let VS Code use its default behavior
   });
 
   if (!resource) {
     return vscode.window.showErrorMessage(`Couldn't locate the path to the exported profile! Try again.`);
   }
-  const profileName = resource[0].path.split("/").pop()?.slice(0, -5);
+
+  // Extract profile name from file using VS Code URI methods
+  const baseName = vscode.Uri.joinPath(resource[0], "..").fsPath !== resource[0].fsPath
+    ? resource[0].path.split("/").pop()
+    : resource[0].fsPath.split(/[\\/]/).pop();
+
+  const profileName = baseName?.replace(/\.json$/i, "");
   if (!profileName) {
     return vscode.window.showErrorMessage(`Couldn't resolve the name of the profile! Rename it and try again.`);
   }
@@ -410,8 +424,14 @@ export async function importProfile(ctx: vscode.ExtensionContext) {
 
   const profiles = await getProfiles(ctx);
 
-  // Add the imported profile
-  profiles[profileName] = JSON.parse((await readFile(resource[0].fsPath)).toString());
+  // Read the profile file using VS Code APIs
+  try {
+    const content = await vscode.workspace.fs.readFile(resource[0]);
+    const profileData = new TextDecoder().decode(content);
+    profiles[profileName] = JSON.parse(profileData);
+  } catch (error) {
+    return vscode.window.showErrorMessage(`Failed to read profile file: ${error}`);
+  }
 
   await setGlobalStateValue(ctx, "profiles", profiles);
 
