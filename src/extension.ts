@@ -2,13 +2,9 @@
 import * as vscode from "vscode";
 import { applyProfile, cloneProfile, createProfile, deleteProfile, editProfile, exportProfile, importProfile, refreshExtensionList } from "./commands";
 import { createStatusBarItem } from "./status-bar";
-import { CommandType } from "./types";
-import { checkGlobalProfile, setEnv } from "./utils";
+import type { CommandType } from "./types";
 
 export async function activate(ctx: vscode.ExtensionContext) {
-  // Set environments
-  await setEnv(ctx);
-
   // Refreshing the list of extensions after startup
   refreshExtensionList(ctx, { isCache: true });
 
@@ -24,8 +20,6 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand("vscode-extension-profiles.Import" as CommandType, () => importProfile(ctx)),
     createStatusBarItem("vscode-extension-profiles.Apply", ctx)
   );
-
-  await checkGlobalProfile(ctx);
 }
 
 export function deactivate() {}

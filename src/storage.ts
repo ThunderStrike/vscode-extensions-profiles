@@ -1,3 +1,6 @@
+import * as vscode from "vscode";
+import type { ExtensionList, ExtensionValue, ProfileList, StorageKeyID } from "./types";
+
 // Use workspaceState for enabled/disabled extensions (workspace)
 export async function getWorkspaceStorageValue(ctx: vscode.ExtensionContext, key: "enabled" | "disabled"): Promise<ExtensionValue[]> {
   const data = ctx.workspaceState.get<ExtensionValue[]>(`extensionsIdentifiers/${key}`);
@@ -7,9 +10,6 @@ export async function getWorkspaceStorageValue(ctx: vscode.ExtensionContext, key
 export async function setWorkspaceStorageValue(ctx: vscode.ExtensionContext, key: "enabled" | "disabled", extensions: ExtensionValue[]) {
   return await ctx.workspaceState.update(`extensionsIdentifiers/${key}`, extensions);
 }
-import * as vscode from "vscode";
-import { ExtensionList, ExtensionValue, ProfileList, StorageKeyID } from "./types";
-
 
 // Use globalState for disabled extensions (global)
 export async function getDisabledExtensionsGlobalStorage(ctx: vscode.ExtensionContext): Promise<ExtensionValue[]> {
