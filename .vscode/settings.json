@@ -12,4 +12,5 @@
         "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
     },
     "mise.configureExtensionsUseSymLinks": true,
+    "deno.path": "/Users/okikio/.local/share/mise/shims/deno",
 }

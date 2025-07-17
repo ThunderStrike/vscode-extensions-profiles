@@ -1,26 +1,27 @@
-"use strict";
 import * as vscode from "vscode";
-import { CommandType } from "./types";
+import { updateProfileStatus } from "./utils";
 
-let statusBarItem: vscode.StatusBarItem;
+// Show current profile info in status bar
+export function createProfileStatusBar(context: vscode.ExtensionContext) {
+  const statusBar = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right, 
+    100
+  );
+  
+  statusBar.name = "Profile Status";
+  statusBar.command = 'profiles-plus.switch';
+  statusBar.tooltip = "Click to switch profiles";
+  
+  // Update status bar text based on current profile
+  updateProfileStatus(statusBar);
+  
+  statusBar.show();
+  context.subscriptions.push(statusBar);
 
-export function createStatusBarItem(comandID: CommandType, ctx: vscode.ExtensionContext): vscode.StatusBarItem {
-  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBarItem.name = "Extension Profiles";
-  statusBarItem.command = comandID;
-  statusBarItem.tooltip = "Select and apply profile";
-
-  let profileName = ctx.workspaceState.get<string>("profile");
-  if (!!profileName) {
-    statusBarItem.text = `$(extensions) ${profileName}`;
-  } else {
-    statusBarItem.text = "$(extensions) Select a profile";
-  }
-
-  statusBarItem.show();
-  return statusBarItem;
-}
-
-export function getStatusBar(): vscode.StatusBarItem {
-  return statusBarItem;
+  // Listen for workspace changes to update status
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(() => {
+      updateProfileStatus(statusBar);
+    })
+  );
 }

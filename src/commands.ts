@@ -1,493 +1,303 @@
-import * as vscode from "vscode";
-import { GLOBAL_PROFILE_NAME } from "./constans";
-import { getStatusBar } from "./status-bar";
-import { setGlobalStateValue, setWorkspaceStorageValue } from "./storage";
-import type { ExtensionList, ExtensionValue, ProfileList } from "./types";
-import { getAllExtensions, getExtensions, getProfiles } from "./utils";
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import { ContentItem, parseSyncContent, SyncResponse } from './utils';
 
-// Select and apply profile ...
-export async function applyProfile(ctx: vscode.ExtensionContext) {
-  // Checking whether the workspace is open
-  let folders = vscode.workspace.workspaceFolders;
-  if (folders === undefined) {
-    return vscode.window.showErrorMessage("Working folder not found, open a folder an try again.");
+/**
+ * Native VSCode Profile Operations
+ * Uses only VSCode's built-in profile system - no custom storage
+ */
+
+// Get all native VSCode profiles
+export async function getNativeProfiles(): Promise<string[]> {
+  // Use command palette data or settings to get profile names
+  // VSCode doesn't expose direct profile API yet, so we use commands
+  const profiles: string[] = [];
+  
+  try {
+    // This triggers the profile picker and we can extract available profiles
+    // Alternative: parse from VSCode settings if accessible
+    const result = await vscode.commands.executeCommand('workbench.profiles.actions.showProfiles');
+    console.log('Native profiles:', result);
+    // Note: This command doesn't return data, it shows UI
+    // We need a different approach...
+  } catch (e) {
+    console.warn('Could not retrieve native profiles:', e);
   }
+  
+  return profiles;
+}
 
-  // Get and check profiles
-  const profiles = await getProfiles(ctx);
-  if (Object.keys(profiles).length === 0) {
-    return vscode.window.showErrorMessage("No profiles found, please create a profile first.");
-  }
+// Create profile using native VSCode commands
+export async function createNativeProfile(): Promise<void> {
+  // Let VSCode handle profile creation entirely
+  await vscode.commands.executeCommand('workbench.profiles.actions.createProfile');
+  
+  // Show success message
+  vscode.window.showInformationMessage('Profile created using VSCode native interface');
+}
 
-  // Generate items
-  let itemsProfiles: vscode.QuickPickItem[] = [];
-  for (const item in profiles) {
-    if (item !== GLOBAL_PROFILE_NAME) {
-      itemsProfiles.push({
-        label: item,
-      });
-    }
-  }
+// Switch to profile using native VSCode commands  
+export async function switchNativeProfile(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.profiles.actions.switchProfile');
+}
 
-  // Selected profile
-  let profileName = (
-    await vscode.window.showQuickPick(itemsProfiles, {
-      placeHolder: "Search",
-      title: "Select a profile",
-    })
-  )?.label;
-  if (!profileName) {
+// Export profile using native VSCode commands
+export async function exportNativeProfile(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.profiles.actions.exportProfile');
+}
+
+// Import profile using native VSCode commands
+export async function importNativeProfile(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.profiles.actions.importProfile');
+}
+
+/**
+ * Value-Add Operations (What VSCode doesn't provide)
+ */
+
+// Merge profiles - this is the advanced functionality VSCode lacks
+export async function mergeProfiles(): Promise<void> {
+  const profileNames = await getAvailableProfileNames();
+  
+  if (profileNames.length < 2) {
+    vscode.window.showErrorMessage('Need at least 2 profiles to merge');
     return;
   }
 
-  // Check and refresh extension list
-  let extensions = await getExtensions(ctx);
-  if (Object.keys(extensions).length === 0) {
-    extensions = await refreshExtensionList(ctx, { isCache: true });
+  const profileMaps = Object.fromEntries(profileNames.map(x => [x.name, x.id]));
+
+  // Select source profiles
+  const sourceProfiles = await vscode.window.showQuickPick(profileNames.map(x => x.name), {
+    canPickMany: true,
+    placeHolder: 'Select profiles to merge',
+    title: 'Merge Profiles'
+  });
+
+  if (!sourceProfiles || sourceProfiles.length < 2) {
+    return;
   }
-
-  let enabledList: ExtensionValue[] = [];
-  let disabledList: ExtensionValue[] = [];
-
-  for (const key in extensions) {
-    let item: ExtensionValue = { id: key, uuid: extensions[key].uuid };
-
-    // Set enabled and disabled extensions for workspace
-    if (profiles[profileName][key] !== undefined || (profiles[GLOBAL_PROFILE_NAME] && profiles[GLOBAL_PROFILE_NAME][key] !== undefined)) {
-      enabledList.push(item);
-    } else {
-      disabledList.push(item);
-    }
-  }
-
-  // Saving extensions for the workspace
-  await setWorkspaceStorageValue(ctx, "enabled", enabledList);
-  await setWorkspaceStorageValue(ctx, "disabled", disabledList);
-
-  // Set the current profile name
-  await ctx.workspaceState.update("profile", profileName);
 
   try {
-    // Old versions re-read active and disabled extensions when the window is restarted
-    const [major, minor] = vscode.version.split(".");
-    if (major === "1" && Number(minor) < 64) {
-      await vscode.commands.executeCommand("workbench.action.reloadWindow");
-      return;
-    }
-  } catch (e) {}
+    vscode.window.showInformationMessage(`Enter name for the new merged profile:`);
 
-  // Set a text status bar
-  getStatusBar().text = `$(extensions) Please restart VSCode`;
+    // 1. Create new profile
+    await vscode.commands.executeCommand('workbench.profiles.actions.createProfile');
 
-  // Show information about mandatory restart
-  if (!ctx.globalState.get<boolean>("isHideMessageRestart")) {
-    const result = await vscode.window.showWarningMessage(
-      "With the recent update of VSCode, the process of restarting extensions based on the workspace has changed and now requires a full restart of VSCode. Now I'm thinking about how it would be possible to apply the profile without a full reboot, if you know or have suggestions on how to improve the behavior of the extension, please create an issue",
-      "Don't show again",
-      "More"
+    vscode.window.showInformationMessage('Created new profile for merging, switch to it now');
+
+    await vscode.commands.executeCommand('workbench.profiles.actions.switchProfile');
+
+    vscode.window.showInformationMessage('Switched profiles, Now merging selected profiles into the new profile...');
+
+    const newProfileNames = await getAvailableProfileNames();
+    const newProfileMaps = Object.fromEntries(
+      newProfileNames
+        .filter(x => !profileMaps[x.name])
+        .map(x => [x.name, x.id])
     );
 
-    if (result === "More") {
-      await vscode.env.openExternal(vscode.Uri.parse("https://github.com/microsoft/vscode/issues/151985#issuecomment-1154699511"));
-    } else if (result === "Don't show again") {
-      await ctx.globalState.update("isHideMessageRestart", true);
-    }
-  } else {
-    await vscode.window.showInformationMessage("Please restart VSCode");
-  }
-
-  return;
-}
-
-async function getNewProfileName(profiles: ProfileList) {
-  let profileName;
-
-  let placeHolder = "Come up with a profile name";
-  while (true) {
-    profileName = await vscode.window.showInputBox({
-      placeHolder,
-      title: "Create new profile",
-    });
-
-    if (profileName && Object.keys(profiles).includes(profileName)) {
-      placeHolder = `The profile \"${profileName}\" already exists, think of another name`;
-      continue; // go next step
-    } else if (profileName && profileName === GLOBAL_PROFILE_NAME) {
-      placeHolder = "This profile name is reserved, please use another one";
-    } else if (!profileName) {
-      return null;
+    // 2. For each source profile, temporarily switch and collect extensions
+    const allExtensions = new Set<string>();
+    
+    for (const profileName of sourceProfiles) {
+      // Switch to profile (this is hacky - VSCode doesn't have programmatic switching)
+      // We'd need to read profile files directly from filesystem
+      const extensions = await getProfileExtensions(profileName, profileMaps[profileName]);
+      extensions.forEach(ext => allExtensions.add(ext));
     }
 
-    break;
-  }
-
-  return profileName;
-}
-
-// Create profile ...
-export async function createProfile(ctx: vscode.ExtensionContext) {
-  const profiles = await getProfiles(ctx);
-
-  const profileName = await getNewProfileName(profiles);
-  if (profileName === null) {
-    return vscode.window.showInformationMessage(`Creation canceled, you did not specify the profile name!`);
-  }
-
-  // Get extension list of cache
-  let extensions = await getExtensions(ctx);
-
-  // update if not exist
-  if (Object.keys(extensions).length === 0) {
-    extensions = await refreshExtensionList(ctx, { isCache: true });
-  }
-
-  // create extension list
-  let itemsWorkspace: vscode.QuickPickItem[] = [];
-  for (const key in extensions) {
-    itemsWorkspace.push({
-      label: extensions[key].label || key,
-      description: extensions[key].label ? key : undefined,
-      detail: extensions[key].description || " - - - - - ",
-    });
-  }
-
-  // show and select extensions
-  let selected = await vscode.window.showQuickPick(itemsWorkspace, {
-    canPickMany: true,
-    placeHolder: "The selected extensions will be enabled for the workspace",
-    title: `Select extensions for "${profileName}"`,
-  });
-
-  // set enabled extensions for profile
-  profiles[profileName] = {};
-
-  if (selected) {
-    for (const { description: key } of selected) {
-      profiles[profileName][key!] = extensions[key!];
+    // 3. Install collected extensions to new profile
+    for (const extensionId of allExtensions) {
+      await vscode.commands.executeCommand('workbench.extensions.installExtension', extensionId);
     }
-  }
 
-  await setGlobalStateValue(ctx, "profiles", profiles);
-
-  return vscode.window.showInformationMessage(`Profile "${profileName}" successfully created!`);
-}
-
-// Clone profile ...
-export async function cloneProfile(ctx: vscode.ExtensionContext) {
-  const profiles = await getProfiles(ctx);
-
-  const selectedProfile = await vscode.window.showQuickPick(Object.keys(profiles));
-  if (!selectedProfile) {
-    return vscode.window.showInformationMessage(`Cloning has been canceled, you have not selected a profile!`);
-  }
-
-  const profileName = await getNewProfileName(profiles);
-  if (profileName === null) {
-    return vscode.window.showInformationMessage(`Cloning canceled, you did not specify the profile name!`);
-  }
-
-  // Get extension list of cache
-  let extensions = await getExtensions(ctx);
-  // Get ExtensionsList from selected profile to use as prefilled selections
-  const preloadedExtensions = profiles[selectedProfile];
-
-  // update if not exist
-  if (Object.keys(extensions).length === 0) {
-    extensions = await refreshExtensionList(ctx, { isCache: true });
-  }
-
-  // create extension list
-  let itemsWorkspace: vscode.QuickPickItem[] = [];
-  for (const key in extensions) {
-    itemsWorkspace.push({
-      picked: !!preloadedExtensions[key],
-      label: extensions[key].label || key,
-      description: extensions[key].label ? key : undefined,
-      detail: extensions[key].description || " - - - - - ",
-    });
-  }
-
-  // show and select extensions
-  let selected = await vscode.window.showQuickPick(itemsWorkspace, {
-    canPickMany: true,
-    placeHolder: "The selected extensions will be enabled for the workspace",
-    title: `Select extensions for "${profileName}"`,
-  });
-
-  // set enabled extensions for profile
-  profiles[profileName] = {};
-
-  if (selected) {
-    for (const { description: key } of selected) {
-      profiles[profileName][key!] = extensions[key!];
-    }
-  }
-
-  await setGlobalStateValue(ctx, "profiles", profiles);
-
-  return vscode.window.showInformationMessage(`Profile "${profileName}" successfully created!`);
-}
-
-// Edit profile ...
-export async function editProfile(ctx: vscode.ExtensionContext) {
-  // Get and check profiles
-  const profiles = await getProfiles(ctx);
-  if (Object.keys(profiles).length === 0) {
-    createProfile(ctx);
-    return vscode.window.showErrorMessage("No profiles found, please create a profile first.");
-  }
-
-  // Generate items
-  let itemsProfiles: vscode.QuickPickItem[] = [];
-  for (const item in profiles) {
-    itemsProfiles.push({
-      label: item,
-    });
-  }
-
-  // Selected profile
-  let profileName = (
-    await vscode.window.showQuickPick(itemsProfiles, {
-      placeHolder: "Search",
-      title: "Select a profile to edit",
-    })
-  )?.label;
-  if (!profileName) {
-    return;
-  }
-
-  // Check and refresh extension list
-  let extensions = await getExtensions(ctx);
-  if (Object.keys(extensions).length === 0) {
-    extensions = await refreshExtensionList(ctx, { isCache: true });
-  }
-
-  // add exists (maybe disabled extension)
-  for (const key in profiles[profileName]) {
-    extensions[key] = profiles[profileName][key];
-  }
-
-  // create extension list
-  let itemsWorkspace: vscode.QuickPickItem[] = [];
-  for (const key in extensions) {
-    let item = extensions[key];
-    itemsWorkspace.push({
-      label: item.label || key,
-      description: item.label ? key : undefined,
-      detail: item.description || " - - - - - ",
-      picked: profiles[profileName][key] !== undefined,
-    });
-  }
-
-  // show and select extensions
-  let selected = await vscode.window.showQuickPick(itemsWorkspace, {
-    canPickMany: true,
-    placeHolder: "The selected extensions will be enabled for the workspace",
-    title: `Select extensions for "${profileName}"`,
-  });
-
-  // set enabled extensions for profile
-  profiles[profileName] = {};
-
-  if (selected) {
-    for (const { description: key } of selected) {
-      profiles[profileName][key!] = extensions[key!];
-    }
-  } else {
-    return;
-  } // canceled
-
-  await setGlobalStateValue(ctx, "profiles", profiles);
-  return vscode.window.showInformationMessage(`Profile "${profileName}" successfully updated!`);
-}
-
-// Delete profile ...
-export async function deleteProfile(ctx: vscode.ExtensionContext) {
-  // Get all profiles
-  const profiles = await getProfiles(ctx);
-  if (Object.keys(profiles).length === 0) {
-    return vscode.window.showInformationMessage("All right, no profiles to delete! 😌");
-  }
-
-  // Generate items
-  let itemsProfiles: vscode.QuickPickItem[] = [];
-  for (const item in profiles) {
-    if (item !== GLOBAL_PROFILE_NAME) {
-      itemsProfiles.push({
-        label: item,
-      });
-    }
-  }
-
-  // Selected profile
-  let selectedItems = await vscode.window.showQuickPick(itemsProfiles, {
-    placeHolder: "Search",
-    title: "Select a profile to delete",
-    canPickMany: true,
-  });
-  if (selectedItems === undefined || selectedItems.length === 0) {
-    return;
-  }
-
-  let deletedProfiles = [];
-  for (const { label } of selectedItems) {
-    delete profiles[label];
-    deletedProfiles.push(label);
-  }
-
-  await setGlobalStateValue(ctx, "profiles", profiles);
-  return vscode.window.showInformationMessage(`Profile${deletedProfiles.length > 1 ? "s" : ""} "${deletedProfiles.join(", ")}" successfully deleted!`);
-}
-
-// Export a profile...
-export async function exportProfile(ctx: vscode.ExtensionContext) {
-  // Get all profiles
-  const profiles = await getProfiles(ctx);
-  if (Object.keys(profiles).length === 0) {
-    return vscode.window.showInformationMessage("All right, no profiles to export! 😌");
-  }
-
-  // Generate items
-  let itemsProfiles: vscode.QuickPickItem[] = [];
-  for (const item in profiles) {
-    itemsProfiles.push({
-      label: item,
-    });
-  }
-
-  // Selected profile
-  let profileName = (
-    await vscode.window.showQuickPick(itemsProfiles, {
-      placeHolder: "Search",
-      title: "Select a profile to export",
-    })
-  )?.label;
-  if (!profileName) {
-    return;
-  }
-
-  // ✅ NEW - Use VS Code's default behavior for save location
-  const resource = await vscode.window.showSaveDialog({
-    title: "Select a place and file name to save the exported profile",
-    saveLabel: "Export",
-    defaultUri: vscode.Uri.file(`${profileName}.json`), // Simple filename suggestion
-    filters: {
-      "JSON files": ["json"],
-    },
-  });
-
-  if (!resource) {
-    return vscode.window.showErrorMessage(`Couldn't locate the path to exported profile! Try again`);
-  }
-
-  const profileData = JSON.stringify(profiles[profileName], null, "    ");
-  const encoded = new TextEncoder().encode(profileData);
-  await vscode.workspace.fs.writeFile(resource, encoded);
-
-  return vscode.window.showInformationMessage(`Profile "${profileName}" successfully exported!`);
-}
-
-// Import a profile...
-export async function importProfile(ctx: vscode.ExtensionContext) {
-  // ✅ NEW - Use VS Code's default behavior for open location
-  const resource = await vscode.window.showOpenDialog({
-    title: "Select a profile to import",
-    openLabel: "Import",
-    canSelectMany: false,
-    filters: {
-      "JSON files": ["json"],
-    },
-    // Remove defaultUri to let VS Code use its default behavior
-  });
-
-  if (!resource) {
-    return vscode.window.showErrorMessage(`Couldn't locate the path to the exported profile! Try again.`);
-  }
-
-  // Extract profile name from file using VS Code URI methods
-  const baseName = vscode.Uri.joinPath(resource[0], "..").fsPath !== resource[0].fsPath
-    ? resource[0].path.split("/").pop()
-    : resource[0].fsPath.split(/[\\/]/).pop();
-
-  const profileName = baseName?.replace(/\.json$/i, "");
-  if (!profileName) {
-    return vscode.window.showErrorMessage(`Couldn't resolve the name of the profile! Rename it and try again.`);
-  }
-
-  // Get extension list of cache
-  let extensions = await getExtensions(ctx);
-
-  // update if not exist
-  if (Object.keys(extensions).length === 0) {
-    extensions = await refreshExtensionList(ctx, { isCache: true });
-  }
-
-  const profiles = await getProfiles(ctx);
-
-  // Read the profile file using VS Code APIs
-  try {
-    const content = await vscode.workspace.fs.readFile(resource[0]);
-    const profileData = new TextDecoder().decode(content);
-    profiles[profileName] = JSON.parse(profileData);
+    vscode.window.showInformationMessage(`Merged ${sourceProfiles.length} profiles into "${Object.keys(newProfileMaps)[0]}" profile successfully!`);
+    
   } catch (error) {
-    return vscode.window.showErrorMessage(`Failed to read profile file: ${error}`);
+    vscode.window.showErrorMessage(`Failed to merge profiles: ${error}`);
   }
-
-  await setGlobalStateValue(ctx, "profiles", profiles);
-
-  return vscode.window.showInformationMessage(`Profile "${profileName}" successfully imported!`);
 }
 
-export async function refreshExtensionList(ctx: vscode.ExtensionContext, { isCache = false }) {
-  let oldExtensionList = await getExtensions(ctx);
-  let newExtensionList: ExtensionList = {};
+// Helper: Get extensions from a specific profile
+async function getProfileExtensions(profileName: string, profileId: string): Promise<string[]> {
+  // This requires reading VSCode's profile storage directly
+  // Profile data is stored in: ~/.vscode/profiles/{profile-id}/
+  
+  try {
+    const profilePath = getProfilePath();
+    const extensionsFile = vscode.Uri.joinPath(profilePath, profileId, 'extensions.json');
+    
+    const content = await vscode.workspace.fs.readFile(extensionsFile);
+    const data = JSON.parse(new TextDecoder().decode(content));
+    
+    return data.extensions || [];
+  } catch (error) {
+    console.warn(`Could not read extensions for profile ${profileName}:`, error);
+    return [];
+  }
+}
 
-  for (const item of await getAllExtensions()) {
-    if (!item.label || !item.description) {
-      item.label = item.id;
-      if (Object.keys(oldExtensionList).length > 0) {
-        for (const key in oldExtensionList) {
-          if (item.id === key) {
-            if (item.label === key) {
-              if (oldExtensionList[key].label) {
-                item.label = oldExtensionList[key].label;
-              }
-            }
-            if (oldExtensionList[key].description) {
-              item.description = oldExtensionList[key].description;
-            }
-            break;
-          }
-        }
-      }
+function getConfigPath(): vscode.Uri {
+  // VSCode profiles are stored in user data directory
+  // 1) Determine the base "User" settings folder:
+  const home = os.homedir();
+  let userSettingsPath: string;
+
+  if (process.platform === 'darwin') {
+    // macOS: ~/Library/Application Support/Code/User
+    userSettingsPath = path.join(
+      home,
+      'Library',
+      'Application Support',
+      'Code',
+      'User'
+    );
+  } else if (process.platform === 'win32') {
+    // Windows: %APPDATA%\Code\User
+    const appData = process.env.APPDATA!;
+    userSettingsPath = path.join(appData, 'Code', 'User');
+  } else {
+    // Linux: ~/.config/Code/User
+    userSettingsPath = path.join(home, '.config', 'Code', 'User');
+  }
+
+  return vscode.Uri.file(userSettingsPath);
+}
+
+// Helper: Get profile filesystem path
+function getProfileMappingPath(): vscode.Uri {
+  let userSettingsPath = getConfigPath();
+
+  // 2) Point at the "profiles" folder under that
+  const lastSyncprofilesUri = vscode.Uri.joinPath(userSettingsPath, 'sync', 'profiles', 'lastSyncprofiles.json');
+
+  return lastSyncprofilesUri;
+}
+
+// Helper: Get profile filesystem path
+function getProfilePath(): vscode.Uri {
+  let userSettingsPath = getConfigPath();
+
+  // 2) Point at the "profiles" folder under that
+  const profilesUri = vscode.Uri.joinPath(userSettingsPath, 'profiles');
+
+  return profilesUri;
+}
+
+// Helper: Get available profile names by scanning filesystem
+async function getAvailableProfileNames(): Promise<ContentItem[]> {
+  try {
+    const profilesMappingPath = getProfileMappingPath();
+    const file = await vscode.workspace.fs.readFile(profilesMappingPath);
+    const profilesData = JSON.parse(new TextDecoder().decode(file)) as SyncResponse;
+    
+    return parseSyncContent(profilesData.syncData.content);
+  } catch (error) {
+    console.warn('Could not scan profile directory:', error);
+    return [];
+  }
+}
+
+/**
+ * Simplified Extension Operations
+ */
+
+// Get currently installed extensions (for current profile)
+export function getCurrentExtensions(): string[] {
+  return vscode.extensions.all
+    .filter(ext => !ext.packageJSON.isBuiltin)
+    .map(ext => ext.id);
+}
+
+// Compare extensions between profiles
+export async function compareProfiles(): Promise<void> {
+  const profileNames = await getAvailableProfileNames();
+  
+  if (profileNames.length < 2) {
+    vscode.window.showErrorMessage('Need at least 2 profiles to compare');
+    return;
+  }
+
+  const profileMaps = Object.fromEntries(profileNames.map(x => [x.name, x.id]));
+
+  const selectedProfiles = await vscode.window.showQuickPick(profileNames.map(x => x.name), {
+    canPickMany: true,
+    placeHolder: 'Select 2 profiles to compare',
+    title: 'Compare Profiles'
+  });
+
+  if (!selectedProfiles || selectedProfiles.length !== 2) {
+    vscode.window.showErrorMessage('Please select exactly 2 profiles');
+    return;
+  }
+
+  const [profile1, profile2] = selectedProfiles;
+  const ext1 = await getProfileExtensions(profile1, profileMaps[profile1]);
+  const ext2 = await getProfileExtensions(profile2, profileMaps[profile2]);
+
+  const unique1 = ext1.filter(ext => !ext2.includes(ext));
+  const unique2 = ext2.filter(ext => !ext1.includes(ext));
+  const common = ext1.filter(ext => ext2.includes(ext));
+
+  // Show comparison in output channel or webview
+  const comparison = `
+Profile Comparison: ${profile1} vs ${profile2}
+
+Common Extensions (${common.length}):
+${common.map(ext => `  • ${ext}`).join('\n')}
+
+Only in ${profile1} (${unique1.length}):
+${unique1.map(ext => `  • ${ext}`).join('\n')}
+
+Only in ${profile2} (${unique2.length}):
+${unique2.map(ext => `  • ${ext}`).join('\n')}
+  `;
+
+  const channel = vscode.window.createOutputChannel('Profile Comparison');
+  channel.show();
+  channel.append(comparison);
+}
+
+// Analyze current profile composition
+export async function analyzeCurrentProfile() {
+  const extensions = getCurrentExtensions();
+  const totalExtensions = extensions.length;
+  
+  // Categorize extensions by publisher/type
+  const categories = new Map<string, string[]>();
+  
+  for (const extId of extensions) {
+    const [publisher] = extId.split('.');
+    if (!categories.has(publisher)) {
+      categories.set(publisher, []);
     }
-
-    newExtensionList[item.id] = {
-      uuid: item.uuid,
-      label: item.label,
-      description: item.description,
-    };
+    categories.get(publisher)!.push(extId);
   }
 
-  if (isCache) {
-    // Add missing items from the cache
-    for (const key in oldExtensionList) {
-      let item = newExtensionList[key];
-      if (item === undefined) {
-        newExtensionList[key] = {
-          uuid: oldExtensionList[key].uuid,
-          label: oldExtensionList[key].label,
-          description: oldExtensionList[key].description,
-        };
-      }
-    }
-  }
+  // Sort publishers by extension count
+  const sortedPublishers = Array.from(categories.entries())
+    .sort(([, a], [, b]) => b.length - a.length);
 
-  await setGlobalStateValue(ctx, "extensions", newExtensionList);
+  const analysis = `
+Current Profile Analysis
 
-  if (!isCache) {
-    vscode.window.showInformationMessage("Updated the list of installed extensions!");
-  }
+Total Extensions: ${totalExtensions}
 
-  return newExtensionList;
+Top Publishers:
+${sortedPublishers.slice(0, 10).map(([pub, exts]) => 
+  `  ${pub}: ${exts.length} extension${exts.length > 1 ? 's' : ''}`
+).join('\n')}
+
+Extension Categories:
+${sortedPublishers.slice(0, 5).map(([pub, exts]) => 
+  `\n${pub}:\n${exts.map(ext => `  • ${ext}`).join('\n')}`
+).join('\n')}
+  `;
+
+  // Show in output channel
+  const channel = vscode.window.createOutputChannel('Profile Analysis');
+  channel.show();
+  channel.clear();
+  channel.append(analysis);
 }
