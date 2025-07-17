@@ -77,3 +77,52 @@ export async function updateProfileStatus(statusBar: vscode.StatusBarItem) {
     statusBar.text = "$(account) Default";
   }
 }
+
+
+/** A UUID string, e.g. "9810c86c-9bb2-47ad-91d3-f54dc8d19619". */
+export type UUID = string;
+
+/** One entry in the parsed content array. */
+export interface ContentItem {
+  /** Unique item identifier. */
+  id: UUID;
+  /** Human‑readable name. */
+  name: string;
+  /** Collection UUID this item belongs to. */
+  collection: UUID;
+  /** Icon name, e.g. "rocket" or "code". */
+  icon: string;
+  /** Optional map of feature flags (empty object if none). */
+  useDefaultFlags?: Record<string, unknown>;
+}
+
+/** The payload returned by your sync endpoint. */
+export interface SyncResponse {
+  /** Overall reference ID for this sync event. */
+  ref: UUID;
+  syncData: SyncData;
+}
+
+/** Inner sync details. */
+export interface SyncData {
+  /** Sync schema version; here always 2. */
+  version: number;
+  /** Originating machine’s UUID. */
+  machineId: UUID;
+  /** Raw JSON string of `ContentItem[]`. */
+  content: string;
+}
+
+/**
+ * Parse the raw content into typed items.
+ * @param raw JSON string from `syncData.content`
+ * @returns Array of `ContentItem`
+ * @example
+ * ```ts
+ * const resp: SyncResponse = await fetch(...).then(r => r.json());
+ * const items = parseContent(resp.syncData.content);
+ * ```
+ */
+export function parseSyncContent(raw: string): ContentItem[] {
+  return JSON.parse(raw) as ContentItem[];
+}

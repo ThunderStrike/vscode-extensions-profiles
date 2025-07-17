@@ -1,4 +1,7 @@
-import * as vscode from "vscode";
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import { ContentItem, parseSyncContent, SyncResponse } from './utils';
 
 /**
  * Native VSCode Profile Operations
@@ -62,8 +65,10 @@ export async function mergeProfiles(): Promise<void> {
     return;
   }
 
+  const profileMaps = Object.fromEntries(profileNames.map(x => [x.name, x.id]));
+
   // Select source profiles
-  const sourceProfiles = await vscode.window.showQuickPick(profileNames, {
+  const sourceProfiles = await vscode.window.showQuickPick(profileNames.map(x => x.name), {
     canPickMany: true,
     placeHolder: 'Select profiles to merge',
     title: 'Merge Profiles'
@@ -73,27 +78,32 @@ export async function mergeProfiles(): Promise<void> {
     return;
   }
 
-  // Get target profile name
-  const targetName = await vscode.window.showInputBox({
-    placeHolder: 'Name for merged profile',
-    title: 'Merge Profiles'
-  });
-
-  if (!targetName) {
-    return;
-  }
-
   try {
+    vscode.window.showInformationMessage(`Enter name for the new merged profile:`);
+
     // 1. Create new profile
     await vscode.commands.executeCommand('workbench.profiles.actions.createProfile');
-    
+
+    vscode.window.showInformationMessage('Created new profile for merging, switch to it now');
+
+    await vscode.commands.executeCommand('workbench.profiles.actions.switchProfile');
+
+    vscode.window.showInformationMessage('Switched profiles, Now merging selected profiles into the new profile...');
+
+    const newProfileNames = await getAvailableProfileNames();
+    const newProfileMaps = Object.fromEntries(
+      newProfileNames
+        .filter(x => !profileMaps[x.name])
+        .map(x => [x.name, x.id])
+    );
+
     // 2. For each source profile, temporarily switch and collect extensions
     const allExtensions = new Set<string>();
     
     for (const profileName of sourceProfiles) {
       // Switch to profile (this is hacky - VSCode doesn't have programmatic switching)
       // We'd need to read profile files directly from filesystem
-      const extensions = await getProfileExtensions(profileName);
+      const extensions = await getProfileExtensions(profileName, profileMaps[profileName]);
       extensions.forEach(ext => allExtensions.add(ext));
     }
 
@@ -102,7 +112,7 @@ export async function mergeProfiles(): Promise<void> {
       await vscode.commands.executeCommand('workbench.extensions.installExtension', extensionId);
     }
 
-    vscode.window.showInformationMessage(`Merged ${sourceProfiles.length} profiles into "${targetName}"`);
+    vscode.window.showInformationMessage(`Merged ${sourceProfiles.length} profiles into "${Object.keys(newProfileMaps)[0]}" profile successfully!`);
     
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to merge profiles: ${error}`);
@@ -110,13 +120,13 @@ export async function mergeProfiles(): Promise<void> {
 }
 
 // Helper: Get extensions from a specific profile
-async function getProfileExtensions(profileName: string): Promise<string[]> {
+async function getProfileExtensions(profileName: string, profileId: string): Promise<string[]> {
   // This requires reading VSCode's profile storage directly
   // Profile data is stored in: ~/.vscode/profiles/{profile-id}/
   
   try {
-    const profilePath = await getProfilePath(profileName);
-    const extensionsFile = vscode.Uri.joinPath(profilePath, 'extensions.json');
+    const profilePath = getProfilePath();
+    const extensionsFile = vscode.Uri.joinPath(profilePath, profileId, 'extensions.json');
     
     const content = await vscode.workspace.fs.readFile(extensionsFile);
     const data = JSON.parse(new TextDecoder().decode(content));
@@ -128,29 +138,61 @@ async function getProfileExtensions(profileName: string): Promise<string[]> {
   }
 }
 
-// Helper: Get profile filesystem path
-async function getProfilePath(profileName: string): Promise<vscode.Uri> {
+function getConfigPath(): vscode.Uri {
   // VSCode profiles are stored in user data directory
-  // This is platform-specific and requires careful handling
-  
-  const userDataPath = vscode.env.appRoot; // This gives us the app root, we need user data
-  // On Windows: %APPDATA%\Code\User\profiles\
-  // On macOS: ~/Library/Application Support/Code/User/profiles/
-  // On Linux: ~/.config/Code/User/profiles/
-  
-  // For now, return a placeholder - this needs proper platform detection
-  return vscode.Uri.file(`${userDataPath}/profiles/${profileName}`);
+  // 1) Determine the base "User" settings folder:
+  const home = os.homedir();
+  let userSettingsPath: string;
+
+  if (process.platform === 'darwin') {
+    // macOS: ~/Library/Application Support/Code/User
+    userSettingsPath = path.join(
+      home,
+      'Library',
+      'Application Support',
+      'Code',
+      'User'
+    );
+  } else if (process.platform === 'win32') {
+    // Windows: %APPDATA%\Code\User
+    const appData = process.env.APPDATA!;
+    userSettingsPath = path.join(appData, 'Code', 'User');
+  } else {
+    // Linux: ~/.config/Code/User
+    userSettingsPath = path.join(home, '.config', 'Code', 'User');
+  }
+
+  return vscode.Uri.file(userSettingsPath);
+}
+
+// Helper: Get profile filesystem path
+function getProfileMappingPath(): vscode.Uri {
+  let userSettingsPath = getConfigPath();
+
+  // 2) Point at the "profiles" folder under that
+  const lastSyncprofilesUri = vscode.Uri.joinPath(userSettingsPath, 'sync', 'profiles', 'lastSyncprofiles.json');
+
+  return lastSyncprofilesUri;
+}
+
+// Helper: Get profile filesystem path
+function getProfilePath(): vscode.Uri {
+  let userSettingsPath = getConfigPath();
+
+  // 2) Point at the "profiles" folder under that
+  const profilesUri = vscode.Uri.joinPath(userSettingsPath, 'profiles');
+
+  return profilesUri;
 }
 
 // Helper: Get available profile names by scanning filesystem
-async function getAvailableProfileNames(): Promise<string[]> {
+async function getAvailableProfileNames(): Promise<ContentItem[]> {
   try {
-    const profilesDir = vscode.Uri.file(`${vscode.env.appRoot}/profiles`);
-    const entries = await vscode.workspace.fs.readDirectory(profilesDir);
+    const profilesMappingPath = getProfileMappingPath();
+    const file = await vscode.workspace.fs.readFile(profilesMappingPath);
+    const profilesData = JSON.parse(new TextDecoder().decode(file)) as SyncResponse;
     
-    return entries
-      .filter(([name, type]) => type === vscode.FileType.Directory)
-      .map(([name]) => name);
+    return parseSyncContent(profilesData.syncData.content);
   } catch (error) {
     console.warn('Could not scan profile directory:', error);
     return [];
@@ -177,7 +219,9 @@ export async function compareProfiles(): Promise<void> {
     return;
   }
 
-  const selectedProfiles = await vscode.window.showQuickPick(profileNames, {
+  const profileMaps = Object.fromEntries(profileNames.map(x => [x.name, x.id]));
+
+  const selectedProfiles = await vscode.window.showQuickPick(profileNames.map(x => x.name), {
     canPickMany: true,
     placeHolder: 'Select 2 profiles to compare',
     title: 'Compare Profiles'
@@ -189,8 +233,8 @@ export async function compareProfiles(): Promise<void> {
   }
 
   const [profile1, profile2] = selectedProfiles;
-  const ext1 = await getProfileExtensions(profile1);
-  const ext2 = await getProfileExtensions(profile2);
+  const ext1 = await getProfileExtensions(profile1, profileMaps[profile1]);
+  const ext2 = await getProfileExtensions(profile2, profileMaps[profile2]);
 
   const unique1 = ext1.filter(ext => !ext2.includes(ext));
   const unique2 = ext2.filter(ext => !ext1.includes(ext));
